@@ -1,0 +1,82 @@
+:root {
+  /* Backgrounds */
+  --bg-canvas: #080810;
+  --bg-surface-1: #0F0F1A;
+  --bg-surface-2: #141420;
+  --bg-surface-3: #1A1A28;
+  --bg-input: #1E1E2E;
+  --bg-hover: #20202F;
+
+  /* Brand */
+  --gold-400: #D4A849;
+  --gold-500: #B8892A;
+  --gold-dim: rgba(212,168,73,0.12);
+  --gold-glow: rgba(212,168,73,0.25);
+
+  /* Text */
+  --text-primary: #EEEEF5;
+  --text-secondary: #9090A8;
+  --text-muted: #52526A;
+
+  /* Borders */
+  --border-subtle: rgba(255,255,255,0.06);
+  --border-default: rgba(255,255,255,0.10);
+  --border-strong: rgba(255,255,255,0.18);
+
+  /* Status */
+  --status-active: #22D3A4;
+  --status-pending: #FBBF24;
+  --status-error: #F87171;
+  --status-approved: #34D399;
+  --status-escalated: #C084FC;
+  --status-shadow: #60A5FA;
+
+  /* Conversion */
+  --converted: #22D3A4;
+  --not-converted: #F87171;
+  --pending-conv: #FBBF24;
+
+  /* Accountability */
+  --acc-sales: #60A5FA;
+  --acc-product: #FBBF24;
+  --acc-consumer: #34D399;
+  --acc-mixed: #C084FC;
+
+  /* POUR severity */
+  --pour-high: #F87171;
+  --pour-medium: #FBBF24;
+  --pour-low: #60A5FA;
+
+  /* Forms */
+  --form-field-bg: #1E1E2E;
+  --form-focus: #D4A849;
+  --form-error: #F87171;
+  --form-success: #22D3A4;
+  --form-required: #F87171;
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface-1) 25%,
+    var(--bg-surface-2) 50%,
+    var(--bg-surface-1) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.4; }
+}
+
+.pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
