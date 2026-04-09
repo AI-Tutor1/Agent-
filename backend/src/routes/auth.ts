@@ -1,46 +1,42 @@
 import { Router } from 'express';
 import { pool } from '../db';
-import { MOCK_USERS } from '../data/mock';
 
 const router = Router();
 
 router.get('/users', async (_req, res) => {
   try {
     const result = await pool.query(
-      'SELECT user_id AS id, name, role, dept FROM platform_users WHERE is_active = true ORDER BY name'
+      `SELECT id, full_name AS name, role, department AS dept
+       FROM user_profiles
+       ORDER BY full_name`
     );
-    res.json(result.rows.length > 0 ? result.rows : MOCK_USERS);
+    res.json(result.rows);
   } catch (err) {
     console.error('Error fetching users:', err);
-    res.json(MOCK_USERS);
+    res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
 
 router.post('/login', async (req, res) => {
   const { userId } = req.body;
+  if (!userId) {
+    res.status(400).json({ error: 'userId is required' });
+    return;
+  }
   try {
     const result = await pool.query(
-      'SELECT user_id AS id, name, role, dept FROM platform_users WHERE user_id = $1 AND is_active = true',
+      `SELECT id, full_name AS name, role, department AS dept
+       FROM user_profiles
+       WHERE id = $1`,
       [userId]
     );
-    if (result.rows.length > 0) {
-      res.json(result.rows[0]);
+    if (result.rows.length === 0) {
+      res.status(401).json({ error: 'User not found' });
       return;
     }
-    // Fallback to mock
-    const mockUser = MOCK_USERS.find(u => u.id === userId);
-    if (mockUser) {
-      res.json(mockUser);
-      return;
-    }
-    res.status(401).json({ error: 'User not found' });
+    res.json(result.rows[0]);
   } catch (err) {
     console.error('Error during login:', err);
-    const mockUser = MOCK_USERS.find(u => u.id === userId);
-    if (mockUser) {
-      res.json(mockUser);
-      return;
-    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });

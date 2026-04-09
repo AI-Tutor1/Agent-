@@ -1,21 +1,39 @@
 import { Router } from 'express';
-import { DEPARTMENTS } from '../data/mock';
+import { pool } from '../db';
 
 const router = Router();
 
-// Departments are organizational structure — kept as config data
-// Can be moved to DB later when department management is needed
-router.get('/', (_req, res) => {
-  res.json(DEPARTMENTS);
+router.get('/', async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, head_name AS head, head_agent_name, total_agents, active_agents
+       FROM departments
+       ORDER BY name`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching departments:', err);
+    res.status(500).json({ error: 'Failed to fetch departments' });
+  }
 });
 
-router.get('/:id', (req, res) => {
-  const dept = DEPARTMENTS.find(d => d.id === req.params.id);
-  if (!dept) {
-    res.status(404).json({ error: 'Department not found' });
-    return;
+router.get('/:id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, head_name AS head, head_agent_name, total_agents, active_agents
+       FROM departments
+       WHERE id = $1`,
+      [req.params.id]
+    );
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'Department not found' });
+      return;
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching department:', err);
+    res.status(500).json({ error: 'Failed to fetch department' });
   }
-  res.json(dept);
 });
 
 export default router;

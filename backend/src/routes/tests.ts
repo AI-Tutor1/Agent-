@@ -1,21 +1,15 @@
 import { Router } from 'express';
-import { mockTests } from '../data/mockTests';
 
 const router = Router();
 
-// Tests are educational content — kept as mock for now
-// Will be DB-backed when test creation is fully implemented
+// Tests are TuAI educational content — not in scope for this system.
+// Returns empty arrays until a tests table is added to the schema.
 router.get('/', (_req, res) => {
-  res.json(mockTests);
+  res.json([]);
 });
 
 router.get('/:id', (req, res) => {
-  const test = mockTests.find(t => t.id === req.params.id);
-  if (!test) {
-    res.status(404).json({ error: 'Test not found' });
-    return;
-  }
-  res.json(test);
+  res.status(404).json({ error: 'Test not found' });
 });
 
 export default router;
