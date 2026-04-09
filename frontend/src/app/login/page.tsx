@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { useAuthStore, MOCK_USERS, type User } from '@/store/auth.store';
+import { useAuthStore, type User } from '@/store/auth.store';
+import { api } from '@/lib/api';
 
 const roleLabels: Record<string, string> = {
   counselor: 'Counselor · Product / Counseling',
@@ -17,17 +18,34 @@ export default function LoginPage() {
   const router = useRouter();
   const { user, setUser } = useAuthStore();
   const [selected, setSelected] = useState<User | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  if (user) {
-    router.push('/');
-    return null;
-  }
+  useEffect(() => {
+    if (user) {
+      router.push('/');
+    }
+  }, [user, router]);
 
-  const handleContinue = () => {
+  useEffect(() => {
+    api.auth.getUsers()
+      .then((data) => setUsers(data as User[]))
+      .catch(() => setUsers([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleContinue = async () => {
     if (!selected) return;
+    try {
+      await api.auth.login(selected.id);
+    } catch {
+      // login endpoint may not exist yet — proceed with local selection
+    }
     setUser(selected);
     router.push('/');
   };
+
+  if (user) return null;
 
   return (
     <div className="min-h-[100dvh] bg-[var(--bg-canvas)] flex items-center justify-center px-4">
@@ -50,24 +68,37 @@ export default function LoginPage() {
         <div className="bg-[var(--bg-surface-1)] border border-[var(--border-default)] rounded-xl p-8">
           <p className="text-sm font-['DM_Sans'] text-[var(--text-secondary)] mb-5">Select your profile to continue</p>
 
-          <div className="space-y-3">
-            {MOCK_USERS.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => setSelected(u)}
-                className={`w-full text-left px-4 py-3.5 rounded-lg border transition-all duration-150
-                  ${selected?.id === u.id
-                    ? 'border-[var(--gold-400)] bg-[var(--gold-dim)]'
-                    : 'border-[var(--border-default)] bg-transparent hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)]'
-                  }`}
-              >
-                <div className="font-['Syne'] font-medium text-[var(--text-primary)]">{u.name}</div>
-                <div className="text-xs font-['DM_Sans'] text-[var(--text-secondary)] mt-0.5">
-                  {roleLabels[u.role] || u.role}
-                </div>
-              </button>
-            ))}
-          </div>
+          {loading ? (
+            <div className="animate-pulse space-y-3">
+              <div className="h-14 bg-[var(--bg-elevated,var(--bg-surface-2))] rounded-lg w-full" />
+              <div className="h-14 bg-[var(--bg-elevated,var(--bg-surface-2))] rounded-lg w-full" />
+              <div className="h-14 bg-[var(--bg-elevated,var(--bg-surface-2))] rounded-lg w-full" />
+            </div>
+          ) : users.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <p className="font-['Syne'] text-sm font-semibold text-[var(--text-primary)] mb-1">No users found</p>
+              <p className="text-[var(--text-muted)] text-xs font-['DM_Sans']">Check that the backend is running.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {users.map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => setSelected(u)}
+                  className={`w-full text-left px-4 py-3.5 rounded-lg border transition-all duration-150
+                    ${selected?.id === u.id
+                      ? 'border-[var(--gold-400)] bg-[var(--gold-dim)]'
+                      : 'border-[var(--border-default)] bg-transparent hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)]'
+                    }`}
+                >
+                  <div className="font-['Syne'] font-medium text-[var(--text-primary)]">{u.name}</div>
+                  <div className="text-xs font-['DM_Sans'] text-[var(--text-secondary)] mt-0.5">
+                    {roleLabels[u.role] || u.role}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
 
           <button
             onClick={handleContinue}

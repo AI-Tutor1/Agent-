@@ -1,8 +1,34 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { ChevronRight, ChevronDown, ChevronUp, Zap, CameraOff, Users, WifiOff, XCircle, BookOpen, Clock, UserX, Maximize2, Check, Edit3, RotateCcw, X } from 'lucide-react'
-import type { DemoAnalysis } from '@/types/mock'
 import { RejectModal } from './RejectModal'
+
+interface DemoAnalysis {
+  id: string
+  demoId: string
+  status: 'pending_review' | 'approved' | 'rejected' | 'redo' | 'escalated'
+  teacher: string
+  student: string
+  level: string
+  subject: string
+  date: string
+  salesAgent: string
+  confidence: number
+  studentRating: number
+  analystRating: number
+  conversionStatus: 'Converted' | 'Not Converted' | 'Pending'
+  methodology: string
+  topicSelection: string
+  resourceUsage: string
+  interactivity: string
+  effectiveness: string
+  improvements: string
+  pourFlags: { category: string; severity: 'High' | 'Medium' | 'Low'; description: string }[]
+  accountability: { classification: string; evidence: string; confidence: string } | null
+  processingTime: string
+  tokensUsed: number
+  feedbackText: string
+}
 import { RedoModal } from './RedoModal'
 import { useToast } from './Toast'
 

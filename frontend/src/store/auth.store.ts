@@ -18,13 +18,6 @@ interface AuthStore {
   setViewMode: (mode: 'counselor' | 'manager') => void
 }
 
-export const MOCK_USERS: User[] = [
-  { id: 'u1', name: 'Wajeeha Gul',        role: 'counselor', dept: 'Product / Counseling' },
-  { id: 'u2', name: 'Hoor ul Ain Khatri', role: 'sales',     dept: 'Sales' },
-  { id: 'u3', name: 'Maryam Rasheeed',    role: 'sales',     dept: 'Sales' },
-  { id: 'u4', name: 'Dawood Larejani',    role: 'dual',      dept: 'Product / Counseling' },
-]
-
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set) => ({

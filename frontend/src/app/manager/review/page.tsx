@@ -1,94 +1,80 @@
 'use client';
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { Inbox } from 'lucide-react'
-import { Shell } from '@/components/layout/Shell'
-import { DemoAnalysisCard } from '@/components/DemoAnalysisCard'
-import { api } from '@/lib/api'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { Inbox } from 'lucide-react';
+import { Shell } from '@/components/layout/Shell';
+import { DemoAnalysisCard } from '@/components/DemoAnalysisCard';
+import { api, type ReviewItem, type ReviewQueueData } from '@/lib/api';
+import { useAuthStore } from '@/store/auth.store';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell,
+} from 'recharts';
 
-interface DemoAnalysis {
-  id: string
-  demoId: string
-  status: 'pending_review' | 'approved' | 'rejected' | 'redo' | 'escalated'
-  teacher: string
-  student: string
-  level: string
-  subject: string
-  date: string
-  salesAgent: string
-  confidence: number
-  studentRating: number
-  analystRating: number
-  conversionStatus: 'Converted' | 'Not Converted' | 'Pending'
-  methodology: string
-  topicSelection: string
-  resourceUsage: string
-  interactivity: string
-  effectiveness: string
-  improvements: string
-  pourFlags: { category: string; severity: 'High' | 'Medium' | 'Low'; description: string }[]
-  accountability: { classification: string; evidence: string; confidence: string } | null
-  processingTime: string
-  tokensUsed: number
-  feedbackText: string
-}
+type FilterTab = 'all' | 'high' | 'low' | 'escalated';
 
-const conversionData = Array.from({ length: 30 }, (_, i) => ({
-  day: `${i + 1}`, rate: 55 + Math.random() * 25,
-}))
-
-const accData = [
-  { name: 'Sales', value: 35, color: 'var(--acc-sales)' },
-  { name: 'Product', value: 25, color: 'var(--acc-product)' },
-  { name: 'Consumer', value: 30, color: 'var(--acc-consumer)' },
-  { name: 'Mixed', value: 10, color: 'var(--acc-mixed)' },
-]
-
-const pourData = [
-  { category: 'Resources', count: 12, color: '#60A5FA' },
-  { category: 'Interaction', count: 9, color: '#FBBF24' },
-  { category: 'Technical', count: 7, color: '#F87171' },
-  { category: 'Video', count: 6, color: '#C084FC' },
-  { category: 'Time', count: 4, color: '#34D399' },
-  { category: 'Cancellation', count: 3, color: '#FB923C' },
-  { category: 'No Show', count: 2, color: '#94A3B8' },
-]
-
-type FilterTab = 'all' | 'high' | 'low' | 'escalated'
+const ACC_COLORS: Record<string, string> = {
+  Sales: 'var(--acc-sales)',
+  Product: 'var(--acc-product)',
+  Consumer: 'var(--acc-consumer)',
+  Mixed: 'var(--acc-mixed)',
+};
 
 export default function ReviewPage() {
-  const router = useRouter()
-  const [analyses, setAnalyses] = useState<DemoAnalysis[]>([])
-  const [filter, setFilter] = useState<FilterTab>('all')
-  const [search, setSearch] = useState('')
+  const router = useRouter();
+  const { user } = useAuthStore();
+  const [queueData, setQueueData] = useState<ReviewQueueData | null>(null);
+  const [filter, setFilter] = useState<FilterTab>('all');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  const fetchQueue = useCallback(() => {
+    setLoading(true);
+    api.dashboard.getReviewQueue(filter, search)
+      .then(setQueueData)
+      .catch(() => setQueueData(null))
+      .finally(() => setLoading(false));
+  }, [filter, search]);
 
   useEffect(() => {
-    api.analyses.getAll().then((data: DemoAnalysis[]) => setAnalyses(data))
-  }, [])
+    fetchQueue();
+  }, [fetchQueue]);
 
-  const filtered = analyses.filter((a) => {
-    if (filter === 'high' && a.confidence < 8) return false
-    if (filter === 'low' && a.confidence >= 6) return false
-    if (filter === 'escalated' && a.status !== 'escalated') return false
-    if (search) {
-      const q = search.toLowerCase()
-      return a.teacher.toLowerCase().includes(q) || a.student.toLowerCase().includes(q) || a.subject.toLowerCase().includes(q)
-    }
-    return true
-  })
+  const analyses: ReviewItem[] = queueData?.analyses ?? [];
 
-  const handleApprove = (id: string) => {
-    setAnalyses((prev) => prev.filter((a) => a.id !== id))
-  }
+  const handleApprove = async (id: string) => {
+    const reviewerName = user?.name ?? 'Manager';
+    await api.dashboard.approve(id, reviewerName).catch(console.error);
+    setQueueData((prev) =>
+      prev ? { ...prev, analyses: prev.analyses.filter((a) => a.analysis_id !== id) } : prev
+    );
+  };
+
+  const handleReject = async (id: string, reason?: string) => {
+    const reviewerName = user?.name ?? 'Manager';
+    await api.dashboard.reject(id, reviewerName, reason ?? 'Rejected').catch(console.error);
+    setQueueData((prev) =>
+      prev ? { ...prev, analyses: prev.analyses.filter((a) => a.analysis_id !== id) } : prev
+    );
+  };
+
+  const handleRedo = async (id: string, instructions?: string) => {
+    const reviewerName = user?.name ?? 'Manager';
+    await api.dashboard.redo(id, reviewerName, instructions ?? 'Please redo this analysis').catch(console.error);
+    setQueueData((prev) =>
+      prev ? { ...prev, analyses: prev.analyses.filter((a) => a.analysis_id !== id) } : prev
+    );
+  };
 
   const tabs: { key: FilterTab; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'high', label: 'High ≥8' },
     { key: 'low', label: 'Low <6' },
     { key: 'escalated', label: 'Escalated' },
-  ]
+  ];
+
+  const counts = queueData?.counts;
 
   return (
     <Shell breadcrumbs={[
@@ -96,16 +82,17 @@ export default function ReviewPage() {
       { label: 'Review Queue' },
     ]}>
       {/* KPI Strip */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {[
-          { label: 'Processed Today', value: '3' },
-          { label: 'Awaiting Counselor', value: '1' },
-          { label: 'Awaiting Sales', value: '2', highlight: true },
-          { label: 'Pending Review', value: String(analyses.length) },
-          { label: 'Escalations', value: '0' },
+          { label: 'Pending Review', value: loading ? '—' : String(counts?.total ?? 0) },
+          { label: 'High Confidence', value: loading ? '—' : String(counts?.high_confidence ?? 0) },
+          { label: 'Low Confidence', value: loading ? '—' : String(counts?.low_confidence ?? 0), highlight: (counts?.low_confidence ?? 0) > 0 },
+          { label: 'Escalations', value: loading ? '—' : String(counts?.escalated ?? 0) },
         ].map((k) => (
           <div key={k.label} className="bg-[var(--bg-surface-1)] border border-[var(--border-subtle)] rounded-lg p-3">
-            <div className={`font-['JetBrains_Mono'] text-xl font-bold ${k.highlight ? 'text-[var(--status-pending)]' : 'text-[var(--text-primary)]'}`}>{k.value}</div>
+            <div className={`font-['JetBrains_Mono'] text-xl font-bold ${k.highlight ? 'text-[var(--status-pending)]' : 'text-[var(--text-primary)]'}`}>
+              {k.value}
+            </div>
             <div className="text-[11px] font-['DM_Sans'] text-[var(--text-muted)]">{k.label}</div>
           </div>
         ))}
@@ -127,29 +114,72 @@ export default function ReviewPage() {
               ))}
             </div>
             <input
-              type="text" placeholder="Search..."
-              value={search} onChange={(e) => setSearch(e.target.value)}
-              className="bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--gold-400)] max-w-[200px]"
+              type="text"
+              placeholder="Search teacher, student, subject..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--gold-400)] max-w-[240px]"
             />
           </div>
 
-          {/* Cards */}
-          {filtered.length === 0 ? (
-            <div className="text-center py-16">
-              <Inbox size={40} className="mx-auto text-[var(--text-muted)] mb-3" />
-              <p className="font-['Syne'] font-medium text-[var(--text-primary)]">Queue clear</p>
-              <p className="text-sm font-['DM_Sans'] text-[var(--text-muted)]">All analyses reviewed</p>
+          {/* Loading skeleton */}
+          {loading ? (
+            <div className="space-y-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="bg-[var(--bg-surface-1)] border border-[var(--border-subtle)] rounded-xl p-5 animate-pulse">
+                  <div className="h-4 bg-[var(--bg-surface-2)] rounded w-3/4 mb-3" />
+                  <div className="h-3 bg-[var(--bg-surface-2)] rounded w-1/2 mb-2" />
+                  <div className="h-3 bg-[var(--bg-surface-2)] rounded w-2/3" />
+                </div>
+              ))}
+            </div>
+          ) : analyses.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Inbox className="w-12 h-12 text-[var(--text-muted)] mb-4" />
+              <h3 className="font-['Syne'] text-lg font-semibold text-[var(--text-primary)] mb-2">No analyses yet</h3>
+              <p className="text-[var(--text-muted)] text-sm font-['DM_Sans']">
+                Analyses will appear here once the pipeline processes demos.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
-              {filtered.map((a, i) => (
+              {analyses.map((a, i) => (
                 <DemoAnalysisCard
-                  key={a.id}
-                  analysis={a}
+                  key={a.analysis_id}
+                  analysis={{
+                    id: a.analysis_id,
+                    demoId: a.demo_id,
+                    status: a.analysis_status as 'pending_review' | 'approved' | 'rejected' | 'redo' | 'escalated',
+                    teacher: a.teacher,
+                    student: a.student,
+                    level: a.level,
+                    subject: a.subject,
+                    date: a.date,
+                    salesAgent: a.sales_agent,
+                    confidence: a.confidence,
+                    studentRating: a.student_rating,
+                    analystRating: a.analyst_rating,
+                    conversionStatus: a.conversion_status as 'Converted' | 'Not Converted' | 'Pending',
+                    methodology: a.methodology,
+                    topicSelection: a.topic_selection,
+                    resourceUsage: a.resource_usage,
+                    interactivity: a.interactivity,
+                    effectiveness: a.effectiveness,
+                    improvements: a.improvements,
+                    pourFlags: a.pour_flags.map((f) => ({
+                      category: f.category,
+                      severity: f.severity as 'High' | 'Medium' | 'Low',
+                      description: f.description,
+                    })),
+                    accountability: a.accountability,
+                    processingTime: '',
+                    tokensUsed: a.tokens_used,
+                    feedbackText: a.feedback_text,
+                  }}
                   index={i}
                   onApprove={handleApprove}
-                  onReject={(id) => setAnalyses((prev) => prev.filter((x) => x.id !== id))}
-                  onRedo={(id) => console.log('redo', id)}
+                  onReject={(id) => handleReject(id)}
+                  onRedo={(id) => handleRedo(id)}
                   onExpand={(id) => router.push(`/manager/dept/product/agent/wajeeha/sub/demo-conv/task/${id}`)}
                 />
               ))}
@@ -159,58 +189,69 @@ export default function ReviewPage() {
 
         {/* Right: Analytics Sidebar */}
         <div className="w-full xl:w-[340px] flex-shrink-0 space-y-6">
-          {/* Conversion Trend */}
-          <div className="bg-[var(--bg-surface-1)] border border-[var(--border-subtle)] rounded-xl p-4">
-            <h3 className="text-xs font-['Syne'] font-semibold uppercase text-[var(--text-muted)] mb-3">Conversion Trend (30d)</h3>
-            <ResponsiveContainer width="100%" height={150}>
-              <LineChart data={conversionData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="day" tick={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: '#52526A' }} axisLine={false} domain={[40, 90]} />
-                <Tooltip contentStyle={{ backgroundColor: '#1A1A28', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }} />
-                <Line type="monotone" dataKey="rate" stroke="#D4A849" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
           {/* Accountability Donut */}
           <div className="bg-[var(--bg-surface-1)] border border-[var(--border-subtle)] rounded-xl p-4">
             <h3 className="text-xs font-['Syne'] font-semibold uppercase text-[var(--text-muted)] mb-3">Accountability Split</h3>
-            <div className="flex items-center justify-center">
-              <ResponsiveContainer width={160} height={160}>
-                <PieChart>
-                  <Pie data={accData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value" stroke="none">
-                    {accData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex flex-wrap gap-3 justify-center mt-2">
-              {accData.map((d) => (
-                <div key={d.name} className="flex items-center gap-1.5 text-[11px] font-['DM_Sans'] text-[var(--text-secondary)]">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />{d.name} {d.value}%
+            {loading ? (
+              <div className="animate-pulse h-40 bg-[var(--bg-surface-2)] rounded" />
+            ) : (
+              <>
+                <div className="flex items-center justify-center">
+                  <ResponsiveContainer width={160} height={160}>
+                    <PieChart>
+                      <Pie
+                        data={queueData?.counts ? [
+                          { name: 'High', value: queueData.counts.high_confidence, color: 'var(--status-active)' },
+                          { name: 'Low', value: queueData.counts.low_confidence, color: 'var(--status-error)' },
+                          { name: 'Escalated', value: queueData.counts.escalated, color: 'var(--status-escalated)' },
+                        ] : []}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={45}
+                        outerRadius={70}
+                        dataKey="value"
+                        stroke="none"
+                      >
+                        {(queueData?.counts ? [
+                          { color: 'var(--status-active)' },
+                          { color: 'var(--status-error)' },
+                          { color: 'var(--status-escalated)' },
+                        ] : []).map((d, i) => <Cell key={i} fill={d.color} />)}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
+                <div className="flex flex-wrap gap-3 justify-center mt-2">
+                  {[
+                    { name: 'High', color: 'var(--status-active)', value: counts?.high_confidence ?? 0 },
+                    { name: 'Low', color: 'var(--status-error)', value: counts?.low_confidence ?? 0 },
+                    { name: 'Escalated', color: 'var(--status-escalated)', value: counts?.escalated ?? 0 },
+                  ].map((d) => (
+                    <div key={d.name} className="flex items-center gap-1.5 text-[11px] font-['DM_Sans'] text-[var(--text-secondary)]">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
+                      {d.name} {d.value}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
-          {/* POUR Frequency */}
+          {/* Trend placeholder */}
           <div className="bg-[var(--bg-surface-1)] border border-[var(--border-subtle)] rounded-xl p-4">
-            <h3 className="text-xs font-['Syne'] font-semibold uppercase text-[var(--text-muted)] mb-3">POUR Frequency</h3>
-            <div className="space-y-2">
-              {pourData.map((p) => (
-                <div key={p.category} className="flex items-center gap-2">
-                  <span className="text-[11px] font-['DM_Sans'] text-[var(--text-secondary)] w-20 text-right">{p.category}</span>
-                  <div className="flex-1 h-4 bg-[var(--bg-surface-2)] rounded overflow-hidden">
-                    <div className="h-full rounded" style={{ width: `${(p.count / 12) * 100}%`, backgroundColor: p.color }} />
-                  </div>
-                  <span className="text-[11px] font-['JetBrains_Mono'] text-[var(--text-muted)] w-6">{p.count}</span>
-                </div>
-              ))}
-            </div>
+            <h3 className="text-xs font-['Syne'] font-semibold uppercase text-[var(--text-muted)] mb-3">Conversion Trend</h3>
+            <p className="text-xs font-['DM_Sans'] text-[var(--text-muted)] text-center py-8">
+              View full analytics on the{' '}
+              <button
+                onClick={() => router.push('/manager/analytics')}
+                className="text-[var(--gold-400)] hover:underline"
+              >
+                Analytics page
+              </button>
+            </p>
           </div>
         </div>
       </div>
     </Shell>
-  )
+  );
 }

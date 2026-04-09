@@ -70,10 +70,40 @@ export default function TaskDetailPage() {
   const [analysis, setAnalysis] = useState<DemoAnalysis | null>(null)
 
   useEffect(() => {
-    api.analyses.getAll().then((analyses: DemoAnalysis[]) => {
-      const found = analyses.find((a) => a.id === params.taskId) || analyses[0]
-      setAnalysis(found)
-    })
+    api.analyses.getAll().then((items) => {
+      const mapped: DemoAnalysis[] = items.map((r) => ({
+        id: r.analysis_id,
+        demoId: r.demo_id,
+        status: r.analysis_status as DemoAnalysis['status'],
+        teacher: r.teacher,
+        student: r.student,
+        level: r.level,
+        subject: r.subject,
+        date: r.date,
+        salesAgent: r.sales_agent,
+        confidence: r.confidence,
+        studentRating: r.student_rating,
+        analystRating: r.analyst_rating,
+        conversionStatus: r.conversion_status as DemoAnalysis['conversionStatus'],
+        methodology: r.methodology,
+        topicSelection: r.topic_selection,
+        resourceUsage: r.resource_usage,
+        interactivity: r.interactivity,
+        effectiveness: r.effectiveness,
+        improvements: r.improvements,
+        pourFlags: r.pour_flags.map((f) => ({
+          category: f.category,
+          severity: f.severity as 'High' | 'Medium' | 'Low',
+          description: f.description,
+        })),
+        accountability: r.accountability,
+        processingTime: '',
+        tokensUsed: r.tokens_used,
+        feedbackText: r.feedback_text,
+      }));
+      const found = mapped.find((a) => a.id === params.taskId) || mapped[0];
+      setAnalysis(found ?? null);
+    }).catch(() => {})
   }, [params.taskId])
 
   if (!analysis) return <Shell><p className="text-[var(--text-muted)]">Loading...</p></Shell>

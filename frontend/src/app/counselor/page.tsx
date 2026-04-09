@@ -8,18 +8,9 @@ import { FormInput, FormTextarea, FormSelect } from '@/components/forms/FormFiel
 import { SegmentedSelector } from '@/components/forms/SegmentedSelector';
 import { SearchableDropdown } from '@/components/forms/SearchableDropdown';
 import { MultiSelectChips } from '@/components/forms/MultiSelectChips';
-import { api } from '@/lib/api';
+import { api, type RecentSubmission } from '@/lib/api';
 
 type SubmissionStatus = 'Processing' | 'Awaiting Sales' | 'Pending Review' | 'Reviewed' | 'Escalated';
-
-interface RecentSubmission {
-  date: string;
-  teacher: string;
-  student: string;
-  level: string;
-  subject: string;
-  status: SubmissionStatus;
-}
 
 const statusColors: Record<SubmissionStatus, string> = {
   'Processing': 'var(--status-active)',
@@ -40,6 +31,7 @@ export default function CounselorPage() {
   const [rateTiers, setRateTiers] = useState<string[]>([]);
   const [curriculumHintsMap, setCurriculumHintsMap] = useState<Record<string, Record<string, string>>>({});
   const [recentSubmissions, setRecentSubmissions] = useState<RecentSubmission[]>([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(true);
 
   useEffect(() => {
     if (!user) { router.push('/login'); return; }
@@ -54,7 +46,10 @@ export default function CounselorPage() {
     api.teachers.getCurriculumBoards().then(setCurriculumBoardsList).catch(() => {});
     api.teachers.getRateTiers().then(setRateTiers).catch(() => {});
     api.teachers.getCurriculumHints().then(setCurriculumHintsMap).catch(() => {});
-    api.demos.getSubmissions().then(setRecentSubmissions).catch(() => {});
+    api.demos.getSubmissions()
+      .then(setRecentSubmissions)
+      .catch(() => setRecentSubmissions([]))
+      .finally(() => setSubmissionsLoading(false));
   }, []);
 
   const [demoDate, setDemoDate] = useState(new Date().toISOString().split('T')[0]);
@@ -115,25 +110,40 @@ export default function CounselorPage() {
     setErrors({});
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) return;
     setSubmitState('loading');
-    setTimeout(() => {
+
+    try {
+      await api.demos.submit({
+        demo_date: demoDate,
+        teacher_name: teacherName,
+        academic_level: academicLevel,
+        student_name: studentName,
+        subjects,
+        curriculum_board: curriculumBoard || undefined,
+        curriculum_code: curriculumCode || undefined,
+        rate_tier: rateTier,
+        pain_points: painPoints || undefined,
+        session_notes: sessionNotes || undefined,
+        logged_by: user?.name,
+      });
+
       setSubmitState('success');
-      const newSub: RecentSubmission = {
-        date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
-        teacher: teacherName.split(' ')[0],
-        student: studentName.split(' ')[0],
-        level: academicLevel.split(' ')[0],
-        subject: subjects[0]?.split(' ')[0] || '',
-        status: 'Processing',
-      };
-      setRecentSubmissions((prev) => [newSub, ...prev].slice(0, 5));
+
+      // Refresh submissions from API
+      api.demos.getSubmissions()
+        .then(setRecentSubmissions)
+        .catch(() => {});
+
       setTimeout(() => {
         resetForm();
         setSubmitState('idle');
       }, 2000);
-    }, 1500);
+    } catch {
+      setSubmitState('error');
+      setTimeout(() => setSubmitState('idle'), 3000);
+    }
   };
 
   if (!user) return null;
@@ -289,34 +299,48 @@ export default function CounselorPage() {
         {/* Recent Submissions */}
         <div className="mt-10">
           <h2 className="font-['Syne'] font-semibold text-lg text-[var(--text-primary)] mb-4">Recent Submissions</h2>
-          <div className="space-y-2">
-            {recentSubmissions.map((sub, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between bg-[var(--bg-surface-1)] border border-[var(--border-subtle)] rounded-lg px-4 py-3"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-xs font-['JetBrains_Mono'] text-[var(--text-muted)] w-12 flex-shrink-0">{sub.date}</span>
-                  <span className="text-sm font-['DM_Sans'] text-[var(--text-primary)] truncate">
-                    {sub.teacher} <ChevronRight size={12} className="inline text-[var(--text-muted)]" /> {sub.student}
-                  </span>
-                  <span className="text-xs font-['DM_Sans'] text-[var(--text-muted)] flex-shrink-0">
-                    {sub.level} · {sub.subject}
+
+          {submissionsLoading ? (
+            <div className="animate-pulse space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-12 bg-[var(--bg-surface-1)] border border-[var(--border-subtle)] rounded-lg" />
+              ))}
+            </div>
+          ) : recentSubmissions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <p className="font-['Syne'] text-sm font-semibold text-[var(--text-primary)] mb-1">No submissions yet</p>
+              <p className="text-[var(--text-muted)] text-xs font-['DM_Sans']">Your logged demos will appear here.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {recentSubmissions.map((sub, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between bg-[var(--bg-surface-1)] border border-[var(--border-subtle)] rounded-lg px-4 py-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-xs font-['JetBrains_Mono'] text-[var(--text-muted)] w-12 flex-shrink-0">{sub.date}</span>
+                    <span className="text-sm font-['DM_Sans'] text-[var(--text-primary)] truncate">
+                      {sub.teacher} <ChevronRight size={12} className="inline text-[var(--text-muted)]" /> {sub.student}
+                    </span>
+                    <span className="text-xs font-['DM_Sans'] text-[var(--text-muted)] flex-shrink-0">
+                      {sub.level} · {sub.subject}
+                    </span>
+                  </div>
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full border font-['DM_Sans'] flex-shrink-0"
+                    style={{
+                      color: statusColors[sub.status as SubmissionStatus] ?? 'var(--text-muted)',
+                      borderColor: statusColors[sub.status as SubmissionStatus] ?? 'var(--text-muted)',
+                      backgroundColor: `color-mix(in srgb, ${statusColors[sub.status as SubmissionStatus] ?? 'var(--text-muted)'} 10%, transparent)`,
+                    }}
+                  >
+                    {sub.status}
                   </span>
                 </div>
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full border font-['DM_Sans'] flex-shrink-0"
-                  style={{
-                    color: statusColors[sub.status],
-                    borderColor: statusColors[sub.status],
-                    backgroundColor: `color-mix(in srgb, ${statusColors[sub.status]} 10%, transparent)`,
-                  }}
-                >
-                  {sub.status}
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

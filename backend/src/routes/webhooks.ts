@@ -2,20 +2,13 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../db';
 import { runPipeline } from '../pipeline/run-pipeline';
 import { PipelineError } from '../pipeline/types';
+import { webhookAuth } from '../middleware/auth';
 
 const router = Router();
 
 // POST /api/webhooks/demo-complete — trigger pipeline for a demo
 // Requires X-Webhook-Secret header matching AGENT_COMMAND_WEBHOOK_SECRET
-router.post('/demo-complete', async (req: Request, res: Response) => {
-  const secret = req.headers['x-webhook-secret'];
-  const expectedSecret = process.env.AGENT_COMMAND_WEBHOOK_SECRET;
-
-  if (!expectedSecret || secret !== expectedSecret) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
+router.post('/demo-complete', webhookAuth, async (req: Request, res: Response) => {
   const { demo_id } = req.body as { demo_id?: string };
   if (!demo_id) {
     res.status(400).json({ error: 'demo_id is required' });

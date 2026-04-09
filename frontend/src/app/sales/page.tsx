@@ -8,19 +8,9 @@ import { useAuthStore } from '@/store/auth.store';
 import { FormTextarea, FormInput, FormSelect } from '@/components/forms/FormField';
 import { MultiSelectChips } from '@/components/forms/MultiSelectChips';
 import { StarRating } from '@/components/forms/StarRating';
-import { api } from '@/lib/api';
+import { api, type PendingDemo } from '@/lib/api';
 
 type ConversionStatus = 'Converted' | 'Not Converted' | 'Pending' | '';
-
-interface PendingDemo {
-  id: string;
-  teacher: string;
-  student: string;
-  level: string;
-  subject: string;
-  loggedAgo: string;
-  loggedHours: number;
-}
 
 interface CompletedItem {
   teacher: string;
@@ -43,9 +33,13 @@ export default function SalesPage() {
   const [followUpOptions, setFollowUpOptions] = useState<string[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [completed, setCompleted] = useState<CompletedItem[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
 
   useEffect(() => {
-    api.demos.getPending().then(setPendingDemos).catch(() => {});
+    api.demos.getPending()
+      .then(setPendingDemos)
+      .catch(() => setPendingDemos([]))
+      .finally(() => setPendingLoading(false));
     api.demos.getLostReasons().then(setLostReasonOptions).catch(() => {});
     api.demos.getFollowUpOptions().then(setFollowUpOptions).catch(() => {});
   }, []);
@@ -97,10 +91,21 @@ export default function SalesPage() {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = (demo: PendingDemo) => {
+  const handleSubmit = async (demo: PendingDemo) => {
     if (!validate()) return;
     setSubmitState('loading');
-    setTimeout(() => {
+
+    try {
+      await api.demos.submitSalesOutcome(demo.id, {
+        conversion_status: conversionStatus,
+        student_rating: studentRating,
+        student_feedback: studentFeedback,
+        sales_comments: salesComments,
+        parent_contact: parentContact || undefined,
+        lost_reasons: conversionStatus === 'Not Converted' ? lostReasons : undefined,
+        follow_up_plan: conversionStatus === 'Not Converted' ? followUpPlan : undefined,
+      });
+
       setSubmitState('success');
       setTimeout(() => {
         setCompleted((prev) => [
@@ -111,7 +116,10 @@ export default function SalesPage() {
         setExpandedId(null);
         resetForm();
       }, 600);
-    }, 1500);
+    } catch {
+      setSubmitState('error');
+      setTimeout(() => setSubmitState('idle'), 3000);
+    }
   };
 
   const statusButtons: { label: string; value: ConversionStatus; icon: React.ReactNode; color: string }[] = [
@@ -147,11 +155,17 @@ export default function SalesPage() {
           <div className="flex items-center gap-3 mb-4">
             <h2 className="font-['Syne'] font-semibold text-lg text-[var(--text-primary)]">Awaiting Your Input</h2>
             <span className="bg-[var(--gold-dim)] text-[var(--gold-400)] text-xs font-['JetBrains_Mono'] px-2 py-0.5 rounded-full">
-              {pendingDemos.length}
+              {pendingLoading ? '…' : pendingDemos.length}
             </span>
           </div>
 
-          {pendingDemos.length === 0 ? (
+          {pendingLoading ? (
+            <div className="animate-pulse space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-16 bg-[var(--bg-surface-1)] border border-[var(--border-default)] rounded-lg" />
+              ))}
+            </div>
+          ) : pendingDemos.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-[var(--text-muted)]">
               <CheckCircle2 size={24} />
               <p className="font-['DM_Sans'] text-sm">All caught up — no demos waiting for your input</p>
