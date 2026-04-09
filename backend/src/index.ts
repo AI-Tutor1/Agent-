@@ -9,6 +9,7 @@ import analysisRoutes from './routes/analyses';
 import departmentRoutes from './routes/departments';
 import testRoutes from './routes/tests';
 import syncRoutes from './routes/sync';
+import webhookRoutes from './routes/webhooks';
 
 dotenv.config();
 
@@ -26,6 +27,8 @@ app.use('/api/analyses', analysisRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/tests', testRoutes);
 app.use('/api/sync', syncRoutes);
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/pipeline', webhookRoutes); // /api/pipeline/status/:demoId
 
 // Health check
 app.get('/api/health', (_req, res) => {
