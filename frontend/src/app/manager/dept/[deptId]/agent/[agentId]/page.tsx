@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useParams } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ArrowLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import { Shell } from '@/components/layout/Shell'
 
@@ -29,10 +29,36 @@ const soulPrinciples = [
   'Teacher privacy protected',
 ]
 
+interface SoulData {
+  content: string;
+  agent_name: string;
+  file_type: string;
+}
+
 export default function AgentPage() {
   const router = useRouter()
   const params = useParams<{ deptId: string; agentId: string }>()
   const [showAllPrinciples, setShowAllPrinciples] = useState(false)
+  const [soulContent, setSoulContent] = useState<string | null>(null)
+  const [soulLoading, setSoulLoading] = useState(true)
+  const [soulNotFound, setSoulNotFound] = useState(false)
+
+  useEffect(() => {
+    const agentId = params?.agentId
+    if (!agentId) return
+
+    fetch(`/api/agent/files/${agentId}/SOUL`)
+      .then(async (res) => {
+        if (res.status === 404) {
+          setSoulNotFound(true)
+          return
+        }
+        const data = await res.json() as SoulData
+        setSoulContent(data.content)
+      })
+      .catch(() => setSoulNotFound(true))
+      .finally(() => setSoulLoading(false))
+  }, [params?.agentId])
 
   return (
     <Shell breadcrumbs={[
@@ -73,6 +99,24 @@ export default function AgentPage() {
             <button onClick={() => setShowAllPrinciples(!showAllPrinciples)} className="text-[11px] font-['DM_Sans'] text-[var(--gold-400)] mt-2 flex items-center gap-1">
               {showAllPrinciples ? 'Show less' : `+ ${soulPrinciples.length - 3} more`} <ChevronDown size={12} />
             </button>
+          </div>
+
+          {/* SOUL.md */}
+          <div className="bg-[var(--bg-surface-1)] border border-[var(--border-subtle)] rounded-xl p-5">
+            <h4 className="text-[10px] font-['Syne'] font-semibold uppercase text-[var(--text-muted)] mb-3">SOUL.md</h4>
+            {soulLoading ? (
+              <div className="animate-pulse space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="h-2.5 bg-[var(--bg-surface-2)] rounded" style={{ width: `${60 + (i % 3) * 15}%` }} />
+                ))}
+              </div>
+            ) : soulNotFound ? (
+              <p className="text-xs font-['DM_Sans'] text-[var(--text-muted)] italic">File not found</p>
+            ) : (
+              <pre className="text-[10px] font-['JetBrains_Mono'] text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto">
+                {soulContent}
+              </pre>
+            )}
           </div>
 
           {/* Performance */}

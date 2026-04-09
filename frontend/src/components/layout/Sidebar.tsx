@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { LayoutDashboard, AlertTriangle, BarChart2, Users, ClipboardList, Settings, Search, Menu, X } from 'lucide-react'
+import { LayoutDashboard, AlertTriangle, BarChart2, Users, ClipboardList, Settings, Code2, Search, Menu, X } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 
 const navItems = [
@@ -12,6 +12,7 @@ const navItems = [
   { icon: Users, label: 'All Agents', path: '/manager/agent-log' },
   { icon: ClipboardList, label: 'Task Board', path: '/manager/review', badge: 28 },
   { icon: Settings, label: 'Settings', path: '/manager/settings' },
+  { icon: Code2, label: 'Integration', path: '/manager/integration' },
 ]
 
 export function Sidebar() {

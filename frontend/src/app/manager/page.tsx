@@ -7,6 +7,64 @@ import { BarChart, Bar, ResponsiveContainer } from 'recharts';
 import { Shell } from '@/components/layout/Shell';
 import { api, type OverviewData, type DeptSummary, type ActivityEntry } from '@/lib/api';
 
+// 35-minute threshold for agent online/offline
+const ONLINE_THRESHOLD_MS = 35 * 60 * 1000;
+
+interface AgentStatusEntry {
+  agent_name: string;
+  last_active: string | null;
+  online: boolean;
+}
+
+function AgentStatusSection({ recentActivity }: { recentActivity: ActivityEntry[] }) {
+  // Derive agent status from recent_activity: find last activity per unique agent
+  const agentMap = new Map<string, string>();
+  for (const entry of recentActivity) {
+    if (!agentMap.has(entry.agent_name)) {
+      agentMap.set(entry.agent_name, entry.created_at);
+    }
+  }
+
+  const now = Date.now();
+  const agents: AgentStatusEntry[] = Array.from(agentMap.entries()).map(([name, ts]) => {
+    const last = new Date(ts).getTime();
+    return {
+      agent_name: name,
+      last_active: ts,
+      online: now - last < ONLINE_THRESHOLD_MS,
+    };
+  });
+
+  if (agents.length === 0) return null;
+
+  return (
+    <div className="mb-8">
+      <h2 className="font-['Syne'] font-semibold text-sm text-[var(--text-secondary)] uppercase tracking-wider mb-4">Agent Status</h2>
+      <div className="flex flex-wrap gap-3">
+        {agents.map((agent) => {
+          const timeStr = agent.last_active
+            ? new Date(agent.last_active).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+            : '—';
+          return (
+            <div
+              key={agent.agent_name}
+              className="flex items-center gap-3 bg-[var(--bg-surface-1)] border border-[var(--border-subtle)] rounded-xl px-4 py-3"
+            >
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${agent.online ? 'bg-[var(--status-active)] pulse-dot' : 'bg-[var(--text-muted)]'}`} />
+              <div>
+                <div className="font-['Syne'] font-semibold text-xs text-[var(--text-primary)] capitalize">{agent.agent_name}</div>
+                <div className="text-[10px] font-['JetBrains_Mono'] text-[var(--text-muted)]">
+                  {agent.online ? 'Online' : 'Offline'} · {timeStr}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const deptColor: Record<string, string> = {
   Product: 'var(--gold-400)',
   Sales: 'var(--acc-sales)',
@@ -74,6 +132,11 @@ export default function OverviewPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Agent Status */}
+      {!loading && data && data.recent_activity.length > 0 && (
+        <AgentStatusSection recentActivity={data.recent_activity} />
       )}
 
       <div className="flex gap-6 flex-col xl:flex-row">

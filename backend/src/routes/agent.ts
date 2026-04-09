@@ -1,10 +1,35 @@
+import path from 'path';
+import fs from 'fs';
 import { Router, Request, Response } from 'express';
 import { pool } from '../db';
 import { agentAuth } from '../middleware/auth';
 
 const router = Router();
 
-// All agent routes require X-Agent-Token
+// GET /api/agent/files/:agentName/:fileType — NO auth required (read-only, dashboard use)
+// Must be registered BEFORE agentAuth middleware
+router.get('/files/:agentName/:fileType', (req: Request, res: Response): void => {
+  const agentName = String(req.params['agentName'] ?? '');
+  const fileType = String(req.params['fileType'] ?? '');
+
+  // Sanitise path components — no directory traversal
+  if (/[^a-zA-Z0-9_-]/.test(agentName) || /[^a-zA-Z0-9_-]/.test(fileType)) {
+    res.status(400).json({ error: 'Invalid agent name or file type' });
+    return;
+  }
+
+  const agentFilesRoot = path.resolve(__dirname, '../../../../agent-files');
+  const filePath = path.join(agentFilesRoot, agentName, `${fileType}.md`);
+
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    res.json({ content, agent_name: agentName, file_type: fileType });
+  } catch {
+    res.status(404).json({ error: `File not found: ${agentName}/${fileType}.md` });
+  }
+});
+
+// All routes below require X-Agent-Token
 router.use(agentAuth);
 
 // GET /api/agent/tasks?assignee=name&status=to_do,doing
@@ -244,6 +269,73 @@ router.post('/identity', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[agent/identity] Error:', err);
     res.status(500).json({ error: 'Failed to log identity update' });
+  }
+});
+
+// POST /api/agent/notify
+router.post('/notify', async (req: Request, res: Response) => {
+  const { recipient, type, title, message, reference_id } = req.body as {
+    recipient?: string;
+    type?: string;
+    title?: string;
+    message?: string;
+    reference_id?: string;
+  };
+
+  if (!recipient || !type || !title || !message) {
+    res.status(400).json({ error: 'recipient, type, title, and message are required' });
+    return;
+  }
+
+  const shadowMode = process.env.SHADOW_MODE === 'true';
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO notifications (recipient, type, title, message, reference_id, shadow_mode, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       RETURNING id`,
+      [recipient, type, title, message, reference_id ?? null, shadowMode]
+    );
+
+    res.status(201).json({
+      notification_id: result.rows[0].id,
+      shadow_mode: shadowMode,
+    });
+  } catch (err) {
+    console.error('[agent/notify] Error:', err);
+    res.status(500).json({ error: 'Failed to write notification' });
+  }
+});
+
+// POST /api/agent/register
+router.post('/register', async (req: Request, res: Response) => {
+  const { agent_name, agent_type, department, status } = req.body as {
+    agent_name?: string;
+    agent_type?: string;
+    department?: string;
+    status?: string;
+  };
+
+  if (!agent_name || !agent_type || !department) {
+    res.status(400).json({ error: 'agent_name, agent_type, and department are required' });
+    return;
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO agent_activity_log (agent_name, action_type, details, status, created_at)
+       VALUES ($1, 'agent_register', $2, $3, NOW())`,
+      [
+        agent_name,
+        `Agent registered: type=${agent_type}, department=${department}`,
+        status ?? 'active',
+      ]
+    );
+
+    res.status(201).json({ registered: true, agent_name });
+  } catch (err) {
+    console.error('[agent/register] Error:', err);
+    res.status(500).json({ error: 'Failed to register agent' });
   }
 });
 

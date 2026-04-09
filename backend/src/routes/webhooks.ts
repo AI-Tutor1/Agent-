@@ -15,18 +15,39 @@ router.post('/demo-complete', webhookAuth, async (req: Request, res: Response) =
     return;
   }
 
-  // Run pipeline asynchronously — respond immediately
-  res.status(202).json({ status: 'accepted', demo_id, message: 'Pipeline started' });
-
+  // Validate demo_id exists BEFORE responding
   try {
-    await runPipeline(demo_id);
+    const check = await pool.query(
+      `SELECT demo_id FROM conducted_demo_sessions WHERE demo_id = $1`,
+      [demo_id]
+    );
+    if (check.rows.length === 0) {
+      res.status(404).json({
+        error: {
+          code: 'DEMO_NOT_FOUND',
+          message: `Demo with ID ${demo_id} does not exist`,
+          status: 404,
+        },
+      });
+      return;
+    }
   } catch (err) {
+    console.error('[webhook] DB check failed:', err);
+    res.status(500).json({ error: 'Database error during demo validation' });
+    return;
+  }
+
+  // Respond immediately — fire and forget the pipeline
+  res.json({ pipeline_started: true, demo_id });
+
+  // Run pipeline in background (do NOT await)
+  void runPipeline(demo_id).catch((err: unknown) => {
     if (err instanceof PipelineError && err.code === 'DEMO_NOT_FOUND') {
-      console.error(`[webhook] Demo not found: ${demo_id}`);
+      console.error(`[webhook] Demo not found during pipeline: ${demo_id}`);
     } else {
       console.error(`[webhook] Pipeline error for ${demo_id}:`, err);
     }
-  }
+  });
 });
 
 // GET /api/pipeline/status/:demoId — pipeline status for a demo
