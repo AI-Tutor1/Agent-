@@ -1,26 +1,37 @@
 # Dependencies
 node_modules/
+**/node_modules/
 
 # Environment — NEVER commit
 .env
 .env.local
 .env.*.local
+backend/.env
+frontend/.env.local
+
+# Google service account key — NEVER commit
+*service-account*.json
+*credentials*.json
+*-key.json
 
 # Next.js
 .next/
 out/
 
-# TypeScript scripts output
-.ts-scripts/
-
-# Build
+# Build artifacts
 dist/
 build/
+*.tsbuildinfo
+
+# TypeScript scripts output
+.ts-scripts/
 
 # Logs
 logs/
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # OS
 .DS_Store
@@ -36,5 +47,8 @@ Thumbs.db
 .pnp
 .pnp.js
 
-# Vercel
+# Vercel / hosting
 .vercel
+
+# Docker
+*.env.docker

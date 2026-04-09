@@ -13,27 +13,52 @@ import webhookRoutes from './routes/webhooks';
 import dashboardRoutes from './routes/dashboard';
 import agentRoutes from './routes/agent';
 import { pool } from './db';
+import { securityHeaders } from './middleware/security';
+import {
+  dashboardLimiter,
+  agentLimiter,
+  syncLimiter,
+  webhookLimiter,
+  authLimiter,
+} from './middleware/rate-limit';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-app.use(cors());
-app.use(express.json());
+// Security headers — applied globally
+app.use(securityHeaders);
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/teachers', teacherRoutes);
-app.use('/api/demos', demoRoutes);
-app.use('/api/analyses', analysisRoutes);
-app.use('/api/departments', departmentRoutes);
-app.use('/api/tests', testRoutes);
-app.use('/api/sync', syncRoutes);
-app.use('/api/webhooks', webhookRoutes);
-app.use('/api/pipeline', webhookRoutes); // /api/pipeline/status/:demoId
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/agent', agentRoutes);
+// CORS — read from environment, never wildcard in production
+const allowedOrigin = process.env.CORS_ORIGIN;
+if (!allowedOrigin) {
+  console.warn('[security] CORS_ORIGIN not set — CORS disabled for all origins');
+}
+app.use(cors({
+  origin: allowedOrigin || false,
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type', 'Authorization',
+    'X-Agent-Token', 'X-Webhook-Secret',
+  ],
+}));
+
+app.use(express.json({ limit: '1mb' }));
+
+// Routes with rate limiters
+app.use('/api/auth',        authLimiter,      authRoutes);
+app.use('/api/teachers',    dashboardLimiter, teacherRoutes);
+app.use('/api/demos',       dashboardLimiter, demoRoutes);
+app.use('/api/analyses',    dashboardLimiter, analysisRoutes);
+app.use('/api/departments', dashboardLimiter, departmentRoutes);
+app.use('/api/tests',       dashboardLimiter, testRoutes);
+app.use('/api/sync',        syncLimiter,      syncRoutes);
+app.use('/api/webhooks',    webhookLimiter,   webhookRoutes);
+app.use('/api/pipeline',    webhookLimiter,   webhookRoutes); // /api/pipeline/status/:demoId
+app.use('/api/dashboard',   dashboardLimiter, dashboardRoutes);
+app.use('/api/agent',       agentLimiter,     agentRoutes);
 
 // Health check — real status
 app.get('/api/health', async (_req, res) => {

@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
+import { body, validationResult } from 'express-validator';
 import { pool } from '../db';
 
 const router = Router();
@@ -13,6 +14,8 @@ const FOLLOW_UP_OPTIONS = [
   'Follow up in 1 week', 'Follow up in 1 month',
   'Offer another demo', 'No follow-up needed', 'Closed lost',
 ];
+
+const CONVERSION_STATUSES = ['Converted', 'Not Converted', 'Pending'];
 
 router.get('/pending', async (_req, res) => {
   try {
@@ -64,19 +67,19 @@ router.get('/submissions', async (_req, res) => {
        LIMIT 10`
     );
     const statusMap: Record<string, string> = {
-      'pending':        'Processing',
-      'in_progress':    'Processing',
-      'partial':        'Processing',
-      'complete':       'Reviewed',
-      'escalated':      'Escalated',
+      'pending':     'Processing',
+      'in_progress': 'Processing',
+      'partial':     'Processing',
+      'complete':    'Reviewed',
+      'escalated':   'Escalated',
     };
     const submissions = result.rows.map(r => ({
-      date: r.date,
+      date:    r.date,
       teacher: r.teacher?.split(' ')[0] || '',
       student: r.student?.split(' ')[0] || '',
-      level: r.level?.split(' ')[0] || '',
+      level:   r.level?.split(' ')[0] || '',
       subject: r.subject?.split(' ')[0] || '',
-      status: statusMap[r.status] || 'Processing',
+      status:  statusMap[r.status] || 'Processing',
     }));
     res.json(submissions);
   } catch (err) {
@@ -88,11 +91,36 @@ router.get('/submissions', async (_req, res) => {
 router.get('/lost-reasons', (_req, res) => { res.json(LOST_REASONS); });
 router.get('/follow-up-options', (_req, res) => { res.json(FOLLOW_UP_OPTIONS); });
 
-router.post('/', async (req, res) => {
+const createDemoValidation = [
+  body('demoDate').isISO8601().withMessage('demoDate must be a valid date (YYYY-MM-DD)'),
+  body('teacherName').isString().trim().notEmpty().isLength({ max: 200 }).withMessage('teacherName is required'),
+  body('studentName').isString().trim().notEmpty().isLength({ max: 200 }).withMessage('studentName is required'),
+  body('academicLevel').optional().isString().trim().isLength({ max: 100 }),
+  body('subjects').optional().isArray(),
+  body('subjects.*').optional().isString().trim().isLength({ max: 100 }),
+  body('curriculumBoard').optional().isString().trim().isLength({ max: 100 }),
+  body('curriculumCode').optional().isString().trim().isLength({ max: 50 }),
+];
+
+router.post('/', createDemoValidation, async (req: Request, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ error: 'Validation failed', details: errors.array() });
+    return;
+  }
+
   const {
     demoDate, teacherName, academicLevel, studentName,
     subjects, curriculumBoard, curriculumCode,
-  } = req.body;
+  } = req.body as {
+    demoDate: string;
+    teacherName: string;
+    studentName: string;
+    academicLevel?: string;
+    subjects?: string[];
+    curriculumBoard?: string;
+    curriculumCode?: string;
+  };
 
   const demoId = `${demoDate.replace(/-/g, '')}_${teacherName.split(' ')[0].toLowerCase()}_${studentName.split(' ')[0].toLowerCase()}`;
 
@@ -113,8 +141,28 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.post('/sales-outcome', async (req, res) => {
-  const { demoId, conversionStatus, salesComments, parentContact, salesAgent } = req.body;
+const salesOutcomeValidation = [
+  body('demoId').isString().trim().notEmpty().isLength({ max: 100 }).withMessage('demoId is required'),
+  body('conversionStatus').isIn(CONVERSION_STATUSES).withMessage(`conversionStatus must be one of: ${CONVERSION_STATUSES.join(', ')}`),
+  body('salesComments').optional().isString().trim().isLength({ max: 2000 }),
+  body('parentContact').optional().isString().trim().isLength({ max: 200 }),
+  body('salesAgent').optional().isString().trim().isLength({ max: 200 }),
+];
+
+router.post('/sales-outcome', salesOutcomeValidation, async (req: Request, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ error: 'Validation failed', details: errors.array() });
+    return;
+  }
+
+  const { demoId, conversionStatus, salesComments, parentContact, salesAgent } = req.body as {
+    demoId: string;
+    conversionStatus: string;
+    salesComments?: string;
+    parentContact?: string;
+    salesAgent?: string;
+  };
 
   try {
     const result = await pool.query(

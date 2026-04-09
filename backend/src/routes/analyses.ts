@@ -1,7 +1,10 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
+import { body, param, validationResult } from 'express-validator';
 import { pool } from '../db';
 
 const router = Router();
+
+const VALID_STATUSES = ['pending_review', 'reviewed', 'escalated', 'approved'];
 
 router.get('/', async (_req, res) => {
   try {
@@ -143,8 +146,26 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.patch('/:id/status', async (req, res) => {
-  const { status, reviewNotes, reviewedBy } = req.body;
+const updateStatusValidation = [
+  param('id').isString().trim().notEmpty(),
+  body('status').isIn(VALID_STATUSES).withMessage(`status must be one of: ${VALID_STATUSES.join(', ')}`),
+  body('reviewNotes').optional().isString().trim().isLength({ max: 5000 }),
+  body('reviewedBy').optional().isString().trim().isLength({ max: 200 }),
+];
+
+router.patch('/:id/status', updateStatusValidation, async (req: Request, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ error: 'Validation failed', details: errors.array() });
+    return;
+  }
+
+  const { status, reviewNotes, reviewedBy } = req.body as {
+    status: string;
+    reviewNotes?: string;
+    reviewedBy?: string;
+  };
+
   try {
     await pool.query(
       `UPDATE demo_analysis
