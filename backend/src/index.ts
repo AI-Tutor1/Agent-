@@ -8,6 +8,7 @@ import demoRoutes from './routes/demos';
 import analysisRoutes from './routes/analyses';
 import departmentRoutes from './routes/departments';
 import testRoutes from './routes/tests';
+import syncRoutes from './routes/sync';
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use('/api/demos', demoRoutes);
 app.use('/api/analyses', analysisRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/tests', testRoutes);
+app.use('/api/sync', syncRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
