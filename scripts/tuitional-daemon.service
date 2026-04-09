@@ -1,24 +1,15 @@
 [Unit]
-Description=Tuitional AI — Task Polling Daemon
-After=network.target postgresql.service tuitional-app.service
+Description=Tuitional AI OS — Task Polling Daemon
+After=tuitional-app.service
 
 [Service]
 Type=simple
 User=tuitional
-WorkingDirectory=/opt/tuitional
-EnvironmentFile=/opt/tuitional/backend/.env
-ExecStart=/usr/bin/node -e "require('ts-node').register({project:'backend/tsconfig.json',transpileOnly:true});require('dotenv').config({path:'backend/.env'});require('./scripts/task-daemon.js')"
+WorkingDirectory=/home/tuitional/app
+EnvironmentFile=/home/tuitional/app/backend/.env.production
+ExecStart=/usr/bin/node scripts/task-daemon.js
 Restart=always
-RestartSec=30
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=tuitional-daemon
-
-# Security hardening
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ReadWritePaths=/opt/tuitional
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target

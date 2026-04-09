@@ -1,10 +1,13 @@
 import path from 'path';
 import fs from 'fs';
 import { Router, Request, Response } from 'express';
+import { body, validationResult } from 'express-validator';
 import { pool } from '../db';
 import { agentAuth } from '../middleware/auth';
 
 const router = Router();
+
+const VALID_PRIORITIES = ['urgent', 'high', 'medium', 'low'] as const;
 
 // GET /api/agent/files/:agentName/:fileType — NO auth required (read-only, dashboard use)
 // Must be registered BEFORE agentAuth middleware
@@ -39,7 +42,6 @@ router.get('/tasks', async (req: Request, res: Response) => {
     const statusParam = req.query.status as string | undefined;
     const statuses = statusParam ? statusParam.split(',').map((s) => s.trim()) : [];
 
-      // Build query with separate handling for string vs string[] params
     let query = `SELECT id, title, description, priority, due_date, column_status, assignee_name, metadata, created_at, updated_at FROM task_queue`;
     const conditions: string[] = [];
     const queryParams: (string | string[])[] = [];
@@ -70,20 +72,29 @@ router.get('/tasks', async (req: Request, res: Response) => {
 });
 
 // POST /api/agent/tasks
-router.post('/tasks', async (req: Request, res: Response) => {
+const createTaskValidation = [
+  body('title').isString().trim().notEmpty().isLength({ max: 255 }).withMessage('title is required (max 255 chars)'),
+  body('assignee_name').isString().trim().notEmpty().isLength({ max: 200 }).withMessage('assignee_name is required'),
+  body('description').optional().isString().trim().isLength({ max: 5000 }),
+  body('priority').optional().isIn(VALID_PRIORITIES).withMessage(`priority must be one of: ${VALID_PRIORITIES.join(', ')}`),
+  body('due_date').optional().isISO8601().withMessage('due_date must be a valid ISO 8601 date'),
+];
+
+router.post('/tasks', createTaskValidation, async (req: Request, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ error: 'Validation failed', details: errors.array() });
+    return;
+  }
+
   const { title, description, priority, assignee_name, due_date, metadata } = req.body as {
-    title?: string;
+    title: string;
     description?: string;
     priority?: string;
-    assignee_name?: string;
+    assignee_name: string;
     due_date?: string;
     metadata?: Record<string, unknown>;
   };
-
-  if (!title || !assignee_name) {
-    res.status(400).json({ error: 'title and assignee_name are required' });
-    return;
-  }
 
   try {
     const result = await pool.query(
@@ -180,20 +191,30 @@ router.post('/tasks/:taskId/complete', async (req: Request, res: Response) => {
 });
 
 // POST /api/agent/log
-router.post('/log', async (req: Request, res: Response) => {
+const logValidation = [
+  body('agent_name').isString().trim().notEmpty().isLength({ max: 200 }).withMessage('agent_name is required'),
+  body('action_type').isString().trim().notEmpty().isLength({ max: 200 }).withMessage('action_type is required'),
+  body('status').isString().trim().notEmpty().withMessage('status is required'),
+  body('demo_id').optional().isString().trim().isLength({ max: 100 }),
+  body('details').optional().isString().trim().isLength({ max: 5000 }),
+  body('tokens_used').optional().isInt({ min: 0 }),
+];
+
+router.post('/log', logValidation, async (req: Request, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ error: 'Validation failed', details: errors.array() });
+    return;
+  }
+
   const { agent_name, action_type, demo_id, details, tokens_used, status } = req.body as {
-    agent_name?: string;
-    action_type?: string;
+    agent_name: string;
+    action_type: string;
     demo_id?: string;
     details?: string;
     tokens_used?: number;
-    status?: string;
+    status: string;
   };
-
-  if (!agent_name || !action_type || !status) {
-    res.status(400).json({ error: 'agent_name, action_type, and status are required' });
-    return;
-  }
 
   try {
     await pool.query(
@@ -273,19 +294,28 @@ router.post('/identity', async (req: Request, res: Response) => {
 });
 
 // POST /api/agent/notify
-router.post('/notify', async (req: Request, res: Response) => {
-  const { recipient, type, title, message, reference_id } = req.body as {
-    recipient?: string;
-    type?: string;
-    title?: string;
-    message?: string;
-    reference_id?: string;
-  };
+const notifyValidation = [
+  body('recipient').isString().trim().notEmpty().isLength({ max: 200 }).withMessage('recipient is required'),
+  body('type').isString().trim().notEmpty().isLength({ max: 100 }).withMessage('type is required'),
+  body('title').isString().trim().notEmpty().isLength({ max: 500 }).withMessage('title is required'),
+  body('message').isString().trim().notEmpty().isLength({ max: 2000 }).withMessage('message is required (max 2000 chars)'),
+  body('reference_id').optional().isString().trim().isLength({ max: 100 }),
+];
 
-  if (!recipient || !type || !title || !message) {
-    res.status(400).json({ error: 'recipient, type, title, and message are required' });
+router.post('/notify', notifyValidation, async (req: Request, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ error: 'Validation failed', details: errors.array() });
     return;
   }
+
+  const { recipient, type, title, message, reference_id } = req.body as {
+    recipient: string;
+    type: string;
+    title: string;
+    message: string;
+    reference_id?: string;
+  };
 
   const shadowMode = process.env.SHADOW_MODE === 'true';
 

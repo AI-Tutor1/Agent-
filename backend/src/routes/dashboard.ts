@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { body, validationResult } from 'express-validator';
 import { pool } from '../db';
 
 const router = Router();
@@ -208,18 +209,24 @@ router.post('/review/:analysisId/approve', async (req: Request, res: Response) =
 });
 
 // POST /api/dashboard/review/:analysisId/reject
-router.post('/review/:analysisId/reject', async (req: Request, res: Response) => {
-  const { analysisId } = req.params;
-  const { reviewer_name, reason } = req.body as { reviewer_name?: string; reason?: string };
+const rejectValidation = [
+  body('reviewer_name').isString().trim().notEmpty().withMessage('reviewer_name is required'),
+  body('reason')
+    .isString().trim()
+    .isLength({ min: 5, max: 500 })
+    .withMessage('reason must be between 5 and 500 characters')
+    .escape(),
+];
 
-  if (!reviewer_name) {
-    res.status(400).json({ error: 'reviewer_name is required' });
+router.post('/review/:analysisId/reject', rejectValidation, async (req: Request, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ error: 'Validation failed', details: errors.array() });
     return;
   }
-  if (!reason || reason.length < 5) {
-    res.status(400).json({ error: 'reason is required (min 5 characters)' });
-    return;
-  }
+
+  const { analysisId } = req.params;
+  const { reviewer_name, reason } = req.body as { reviewer_name: string; reason: string };
 
   try {
     await pool.query(
@@ -243,18 +250,24 @@ router.post('/review/:analysisId/reject', async (req: Request, res: Response) =>
 });
 
 // POST /api/dashboard/review/:analysisId/redo
-router.post('/review/:analysisId/redo', async (req: Request, res: Response) => {
-  const { analysisId } = req.params;
-  const { reviewer_name, instructions } = req.body as { reviewer_name?: string; instructions?: string };
+const redoValidation = [
+  body('reviewer_name').isString().trim().notEmpty().withMessage('reviewer_name is required'),
+  body('instructions')
+    .isString().trim()
+    .isLength({ min: 10, max: 1000 })
+    .withMessage('instructions must be between 10 and 1000 characters')
+    .escape(),
+];
 
-  if (!reviewer_name) {
-    res.status(400).json({ error: 'reviewer_name is required' });
+router.post('/review/:analysisId/redo', redoValidation, async (req: Request, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ error: 'Validation failed', details: errors.array() });
     return;
   }
-  if (!instructions || instructions.length < 10) {
-    res.status(400).json({ error: 'instructions is required (min 10 characters)' });
-    return;
-  }
+
+  const { analysisId } = req.params;
+  const { reviewer_name, instructions } = req.body as { reviewer_name: string; instructions: string };
 
   try {
     await pool.query(
@@ -283,6 +296,7 @@ router.get('/analytics', async (req: Request, res: Response) => {
   const days = period === '90d' ? 90 : period === '7d' ? 7 : 30;
 
   try {
+    // Use parameterized interval: CURRENT_DATE - ($1 * INTERVAL '1 day')
     const [trendResult, pourResult, accResult, teacherResult] = await Promise.all([
       pool.query(
         `SELECT
@@ -291,35 +305,39 @@ router.get('/analytics', async (req: Request, res: Response) => {
           COUNT(*) FILTER (WHERE conversion_status = 'Not Converted') AS not_converted,
           COUNT(*) FILTER (WHERE conversion_status = 'Pending') AS pending
          FROM demo_analysis
-         WHERE demo_date >= CURRENT_DATE - INTERVAL '${days} days'
+         WHERE demo_date >= CURRENT_DATE - ($1 * INTERVAL '1 day')
          GROUP BY DATE(demo_date)
-         ORDER BY DATE(demo_date) ASC`
+         ORDER BY DATE(demo_date) ASC`,
+        [days]
       ),
       pool.query(
         `SELECT category, COUNT(*) AS count
          FROM pour_flags pf
          JOIN demo_analysis a ON a.analysis_id = pf.analysis_id
-         WHERE a.demo_date >= CURRENT_DATE - INTERVAL '${days} days'
+         WHERE a.demo_date >= CURRENT_DATE - ($1 * INTERVAL '1 day')
          GROUP BY category
-         ORDER BY count DESC`
+         ORDER BY count DESC`,
+        [days]
       ),
       pool.query(
         `SELECT accountability_classification AS classification, COUNT(*) AS count
          FROM demo_analysis
          WHERE accountability_classification IS NOT NULL
-           AND demo_date >= CURRENT_DATE - INTERVAL '${days} days'
-         GROUP BY accountability_classification`
+           AND demo_date >= CURRENT_DATE - ($1 * INTERVAL '1 day')
+         GROUP BY accountability_classification`,
+        [days]
       ),
       pool.query(
         `SELECT teacher_name, AVG(analyst_rating) AS avg_analyst_rating,
                 COUNT(*) AS total_demos,
                 COUNT(*) FILTER (WHERE conversion_status = 'Converted') AS converted_count
          FROM demo_analysis
-         WHERE demo_date >= CURRENT_DATE - INTERVAL '${days} days'
+         WHERE demo_date >= CURRENT_DATE - ($1 * INTERVAL '1 day')
            AND teacher_name IS NOT NULL
          GROUP BY teacher_name
          ORDER BY avg_analyst_rating DESC
-         LIMIT 10`
+         LIMIT 10`,
+        [days]
       ),
     ]);
 

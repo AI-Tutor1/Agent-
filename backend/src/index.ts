@@ -36,7 +36,7 @@ if (!allowedOrigin) {
   console.warn('[security] CORS_ORIGIN not set — CORS disabled for all origins');
 }
 app.use(cors({
-  origin: allowedOrigin || false,
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: [

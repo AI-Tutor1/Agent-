@@ -1,29 +1,19 @@
-# Tuitional AI — Caddy reverse proxy configuration
-# Replace your-domain.com with the actual domain
-
-your-domain.com {
-  # Frontend (Next.js)
-  reverse_proxy localhost:3000
-
-  # Backend API
-  handle /api/* {
-    reverse_proxy localhost:5001
-  }
-
-  # Security headers
-  header {
-    X-Content-Type-Options nosniff
-    X-Frame-Options DENY
-    Referrer-Policy strict-origin-when-cross-origin
-    Strict-Transport-Security "max-age=31536000; includeSubDomains"
-    -Server
-  }
-
-  # Logging
-  log {
-    output file /var/log/caddy/tuitional-access.log
-    format json
-  }
-
-  encode gzip
+agent.tuitionaledu.com {
+    encode zstd gzip
+    tls {
+        protocols tls1.3
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+    handle /api/* {
+        reverse_proxy localhost:5001
+    }
+    handle {
+        reverse_proxy localhost:3000
+    }
 }

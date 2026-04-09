@@ -1,41 +1,28 @@
-version: '3.9'
-
+version: '3.8'
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file:
-      - ./backend/.env
+    build: ./backend
     ports:
-      - "5001:5001"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:5001/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - "127.0.0.1:5001:5001"
+    env_file:
+      - ./backend/.env.production
+    restart: unless-stopped
+    depends_on:
+      - daemon
 
   daemon:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
+    build: ./backend
+    command: node scripts/task-daemon.js
     env_file:
-      - ./backend/.env
-    command: ["node", "-r", "ts-node/register", "/app/scripts/task-daemon.js"]
-    depends_on:
-      backend:
-        condition: service_healthy
+      - ./backend/.env.production
+    restart: unless-stopped
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file:
-      - ./frontend/.env.local
+    build: ./frontend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - ./frontend/.env.production
+    restart: unless-stopped
     depends_on:
       - backend
