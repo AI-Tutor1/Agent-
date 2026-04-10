@@ -5,6 +5,212 @@ import { motion } from 'framer-motion';
 import { Copy, Check, Wifi, WifiOff } from 'lucide-react';
 import { Shell } from '@/components/layout/Shell';
 
+// ── Apps Script Generator ─────────────────────────────────────────────────────
+
+function makeAppsScript(webhookPath: string): string {
+  return `// ===== CONFIGURATION =====
+const BACKEND_URL = 'https://YOUR-DOMAIN.com'; // Replace with your backend URL
+const WEBHOOK_URL = BACKEND_URL + '${webhookPath}';
+const WEBHOOK_SECRET = 'YOUR_WEBHOOK_SECRET'; // From AGENT_COMMAND_WEBHOOK_SECRET in .env
+
+// ===== AUTO-SYNC ON EDIT =====
+function onEdit(e) {
+  // Debounce: only sync if it has been more than 30 seconds since last sync
+  var props = PropertiesService.getScriptProperties();
+  var lastSync = props.getProperty('lastSync');
+  var now = new Date().getTime();
+  if (lastSync && (now - parseInt(lastSync)) < 30000) return;
+  props.setProperty('lastSync', now.toString());
+  syncToBackend();
+}
+
+// ===== MANUAL SYNC (run this to test) =====
+function syncToBackend() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+
+  if (data.length < 2) return; // No data rows
+
+  var headers = data[0].map(function(h) {
+    return h.toString().toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+  });
+
+  var rows = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = {};
+    for (var j = 0; j < headers.length; j++) {
+      var value = data[i][j];
+      if (value instanceof Date) {
+        value = value.toISOString().split('T')[0];
+      }
+      row[headers[j]] = value;
+    }
+    if (Object.values(row).every(function(v) { return v === '' || v === null; })) continue;
+    rows.push(row);
+  }
+
+  if (rows.length === 0) return;
+
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'X-Webhook-Secret': WEBHOOK_SECRET },
+    payload: JSON.stringify({ rows: rows }),
+    muteHttpExceptions: true
+  };
+
+  try {
+    var response = UrlFetchApp.fetch(WEBHOOK_URL, options);
+    Logger.log('Sync response: ' + response.getContentText());
+  } catch (err) {
+    Logger.log('Sync error: ' + err.toString());
+  }
+}
+
+// ===== SETUP: Run this ONCE to create triggers =====
+function setup() {
+  var triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(function(t) { ScriptApp.deleteTrigger(t); });
+
+  ScriptApp.newTrigger('syncToBackend')
+    .forSpreadsheet(SpreadsheetApp.getActive())
+    .onEdit()
+    .create();
+
+  ScriptApp.newTrigger('syncToBackend')
+    .timeBased()
+    .everyMinutes(15)
+    .create();
+
+  Logger.log('Setup complete. Triggers created.');
+  syncToBackend(); // Run first sync immediately
+}`;
+}
+
+// ── Sheets Setup Section ──────────────────────────────────────────────────────
+
+const SHEET_CONFIGS = [
+  {
+    name: 'Conducted Demo Sessions',
+    sheetId: '1mmeidiQdNMrUcgTPGAIqydjgIKoIEjvAB0DUZDHjVXo',
+    webhookPath: '/api/sync/webhook/conducted-demos',
+    description: 'Logs every demo session. Auto-generates demo_id and triggers the 11-step pipeline.',
+  },
+  {
+    name: 'Demo Feedback Form',
+    sheetId: '187Y-zBiHhyW9sbSfxxQeWCZiAKgvMD5ClmKZDIN0BBk',
+    webhookPath: '/api/sync/webhook/demo-feedback',
+    description: 'Student ratings and feedback. Fuzzy-matched to demo sessions automatically.',
+  },
+  {
+    name: 'Demo Conversion / Sales',
+    sheetId: '1Frhd1bKUKuQXu-5hpUJ6kxJbI9iv9gInl2I8Sw-AUw0',
+    webhookPath: '/api/sync/webhook/conversion-sales',
+    description: 'Sales outcomes per demo. Triggers Step 10 accountability classification.',
+  },
+  {
+    name: 'Counseling Product Sheet',
+    sheetId: '1DkNhYdGzsBNWe-hP1CTc2ySp9daFOhOiZj6yAPQnXok',
+    webhookPath: '/api/sync/webhook/counseling-product',
+    description: 'Master counseling sheet. Multi-tab — send tab_name with each push.',
+  },
+];
+
+function SheetSetupCard({ config, index }: { config: typeof SHEET_CONFIGS[0]; index: number }) {
+  const [copied, setCopied] = useState(false);
+  const script = makeAppsScript(config.webhookPath);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(script).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }).catch(() => {});
+  };
+
+  const steps = [
+    `Open the Google Sheet (Sheet ID: ${config.sheetId.slice(0, 8)}…)`,
+    'Go to Extensions → Apps Script',
+    'Delete all default code in the editor',
+    'Paste the script below',
+    'Replace YOUR-DOMAIN.com with your backend URL',
+    'Replace YOUR_WEBHOOK_SECRET with AGENT_COMMAND_WEBHOOK_SECRET from .env',
+    'Click the dropdown next to Run → select setup → click Run',
+    'Authorize when prompted (Google will ask for permissions)',
+    'Check Execution Log — should show "Setup complete" and sync results',
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06 }}
+      className="bg-[var(--bg-surface-1)] border border-[var(--border-subtle)] rounded-xl overflow-hidden"
+    >
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-5 h-5 rounded-full bg-[var(--gold-dim)] border border-[var(--gold-400)]/30 flex items-center justify-center text-[10px] font-['JetBrains_Mono'] text-[var(--gold-400)]">
+              {index + 1}
+            </span>
+            <h3 className="font-['Syne'] font-semibold text-sm text-[var(--text-primary)]">{config.name}</h3>
+          </div>
+          <p className="text-xs font-['DM_Sans'] text-[var(--text-muted)] ml-7">{config.description}</p>
+        </div>
+      </div>
+
+      {/* Webhook URL */}
+      <div className="px-5 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface-2)]/40">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] font-['Syne'] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Webhook URL</span>
+        </div>
+        <span className="font-['JetBrains_Mono'] text-[11px] text-[var(--gold-400)]">
+          {'https://YOUR-DOMAIN.com'}{config.webhookPath}
+        </span>
+        <div className="mt-1">
+          <span className="text-[10px] font-['DM_Sans'] text-[var(--text-muted)]">Sheet ID: </span>
+          <span className="font-['JetBrains_Mono'] text-[10px] text-[var(--text-muted)]">{config.sheetId}</span>
+        </div>
+      </div>
+
+      {/* Steps */}
+      <div className="px-5 py-4 border-b border-[var(--border-subtle)]">
+        <span className="text-[10px] font-['Syne'] font-semibold uppercase tracking-wider text-[var(--text-muted)] block mb-3">Setup Instructions</span>
+        <ol className="space-y-1.5">
+          {steps.map((step, i) => (
+            <li key={i} className="flex items-start gap-2.5 text-xs font-['DM_Sans'] text-[var(--text-secondary)]">
+              <span className="font-['JetBrains_Mono'] text-[10px] text-[var(--text-muted)] mt-0.5 flex-shrink-0 w-4 text-right">{i + 1}.</span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      {/* Script */}
+      <div className="overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-2.5 border-b border-[var(--border-subtle)]">
+          <span className="text-[10px] font-['Syne'] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Apps Script</span>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 text-[11px] font-['DM_Sans'] px-3 py-1 rounded-lg border transition-all duration-150"
+            style={{
+              color: copied ? 'var(--status-active)' : 'var(--gold-400)',
+              borderColor: copied ? 'var(--status-active)' : 'var(--gold-400)',
+              backgroundColor: copied ? 'var(--status-active)08' : 'var(--gold-dim)',
+            }}
+          >
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            {copied ? 'Copied!' : 'Copy Script'}
+          </button>
+        </div>
+        <pre className="p-5 text-[10px] font-['JetBrains_Mono'] text-[var(--text-secondary)] overflow-x-auto whitespace-pre leading-relaxed max-h-72">
+          {script}
+        </pre>
+      </div>
+    </motion.div>
+  );
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface HealthData {
@@ -547,6 +753,21 @@ export default function IntegrationPage() {
                 </span>
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* Google Sheets Setup */}
+        <section>
+          <div className="mb-6">
+            <h2 className="font-['Syne'] font-bold text-lg text-[var(--text-primary)] mb-1">Connect Your Google Sheets</h2>
+            <p className="text-sm font-['DM_Sans'] text-[var(--text-secondary)]">
+              Paste these scripts into each sheet to auto-sync data to the dashboard. No service account or Google Cloud Console needed.
+            </p>
+          </div>
+          <div className="space-y-5">
+            {SHEET_CONFIGS.map((config, i) => (
+              <SheetSetupCard key={config.sheetId} config={config} index={i} />
+            ))}
           </div>
         </section>
 
