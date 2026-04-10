@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS agent_activity_log (
     action_type     VARCHAR(100) NOT NULL,
     demo_id         VARCHAR(100),
     analysis_id     UUID,
-    details         JSONB,
+    details         TEXT,
     tokens_used     INTEGER,
     duration_ms     INTEGER,
     status          VARCHAR(20),
@@ -299,14 +299,17 @@ CREATE TABLE IF NOT EXISTS comparison_results (
 
 ALTER TABLE demo_analysis ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS counselor_read ON demo_analysis FOR SELECT
+DROP POLICY IF EXISTS counselor_read ON demo_analysis;
+CREATE POLICY counselor_read ON demo_analysis FOR SELECT
     USING (auth.jwt()->>'role' IN ('counselor') AND
            EXISTS (SELECT 1 FROM conducted_demo_sessions WHERE demo_id = demo_analysis.demo_id));
 
-CREATE POLICY IF NOT EXISTS manager_read ON demo_analysis FOR SELECT
+DROP POLICY IF EXISTS manager_read ON demo_analysis;
+CREATE POLICY manager_read ON demo_analysis FOR SELECT
     USING (auth.jwt()->>'role' IN ('manager', 'admin'));
 
-CREATE POLICY IF NOT EXISTS agent_write ON demo_analysis FOR ALL
+DROP POLICY IF EXISTS agent_write ON demo_analysis;
+CREATE POLICY agent_write ON demo_analysis FOR ALL
     USING (auth.jwt()->>'role' = 'service_role');
 
 -- End of migration 001
