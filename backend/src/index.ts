@@ -17,7 +17,6 @@ import { securityHeaders } from './middleware/security';
 import {
   dashboardLimiter,
   agentLimiter,
-  syncLimiter,
   webhookLimiter,
   authLimiter,
 } from './middleware/rate-limit';
@@ -54,7 +53,7 @@ app.use('/api/demos',       dashboardLimiter, demoRoutes);
 app.use('/api/analyses',    dashboardLimiter, analysisRoutes);
 app.use('/api/departments', dashboardLimiter, departmentRoutes);
 app.use('/api/tests',       dashboardLimiter, testRoutes);
-app.use('/api/sync',        syncLimiter,      syncRoutes);
+app.use('/api/sync',                          syncRoutes); // rate limits applied per-endpoint inside sync.ts
 app.use('/api/webhooks',    webhookLimiter,   webhookRoutes);
 app.use('/api/pipeline',    webhookLimiter,   webhookRoutes); // /api/pipeline/status/:demoId
 app.use('/api/dashboard',   dashboardLimiter, dashboardRoutes);
