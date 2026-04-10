@@ -78,6 +78,14 @@ export const api = {
       request<AnalyticsData>(`/api/dashboard/analytics${period ? `?period=${period}` : ''}`),
     getDepartment: (deptId: string) =>
       request<DepartmentDetail>(`/api/dashboard/departments/${deptId}`),
+    getAgentStats: () =>
+      request<AgentStats>('/api/dashboard/agent-stats'),
+    getHeartbeat: (agentName: string) =>
+      request<AgentHeartbeat>(`/api/dashboard/heartbeat/${agentName}`),
+    getPipelineLatest: () =>
+      request<{ steps: PipelineLogStep[] }>('/api/dashboard/pipeline/latest'),
+    getActivityLog: (demoId: string) =>
+      request<ActivityLogData>(`/api/dashboard/activity-log/${demoId}`),
   },
 
   // Analyses (legacy — for backward compat with review page)
@@ -252,6 +260,35 @@ export interface TeacherRanking {
   avg_analyst_rating: number;
   total_demos: number;
   conversion_rate: number;
+}
+
+export interface AgentStats {
+  avg_confidence: string | null;
+  avg_processing_mins: number | null;
+  today_count: number;
+  first_pass_rate: number | null;
+}
+
+export interface AgentHeartbeat {
+  status: 'Online' | 'Offline';
+  shadow_mode: boolean;
+  uptime: string | null;
+  last_seen: string | null;
+}
+
+export interface PipelineLogStep {
+  action_type: string;
+  details: string | null;
+  status: string;
+  created_at: string;
+  duration_ms: number | null;
+}
+
+export interface ActivityLogData {
+  activity_log: PipelineLogStep[];
+  data_sources: { name: string; ok: boolean }[];
+  confidence: number | null;
+  tokens_used: number | null;
 }
 
 export interface DepartmentDetail {

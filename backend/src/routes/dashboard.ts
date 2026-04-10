@@ -397,12 +397,8 @@ router.get('/departments/:deptId', async (req: Request, res: Response) => {
       `SELECT a.analysis_id, a.demo_id, a.teacher_name, a.student_name, a.subject,
               a.analysis_status, a.agent_confidence, TO_CHAR(a.demo_date, 'DD Mon YYYY') AS demo_date
        FROM demo_analysis a
-       WHERE a.teacher_name IN (
-         SELECT agent_name FROM agent_identity WHERE department_id = $1
-       )
        ORDER BY a.created_at DESC
-       LIMIT 20`,
-      [deptId]
+       LIMIT 20`
     );
 
     res.json({
@@ -412,6 +408,154 @@ router.get('/departments/:deptId', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[dashboard/departments] Error:', err);
     res.status(500).json({ error: 'Failed to fetch department data' });
+  }
+});
+
+// GET /api/dashboard/agent-stats — real performance metrics for agent page
+router.get('/agent-stats', async (_req: Request, res: Response) => {
+  try {
+    const [metricsResult, todayResult, approvalResult] = await Promise.all([
+      pool.query(
+        `SELECT
+          AVG(agent_confidence)     AS avg_confidence,
+          AVG(processing_time_mins) AS avg_processing
+         FROM demo_analysis`
+      ),
+      pool.query(
+        `SELECT COUNT(*) AS count FROM demo_analysis
+         WHERE DATE(created_at) = CURRENT_DATE`
+      ),
+      pool.query(
+        `SELECT
+          COUNT(*) FILTER (WHERE analysis_status = 'approved') AS approved,
+          COUNT(*) AS total
+         FROM demo_analysis`
+      ),
+    ]);
+
+    const m = metricsResult.rows[0];
+    const approved = parseInt(approvalResult.rows[0].approved ?? '0', 10);
+    const total    = parseInt(approvalResult.rows[0].total ?? '0', 10);
+
+    res.json({
+      avg_confidence:      m.avg_confidence ? parseFloat(m.avg_confidence).toFixed(1) : null,
+      avg_processing_mins: m.avg_processing  ? Math.round(parseFloat(m.avg_processing)) : null,
+      today_count:         parseInt(todayResult.rows[0].count ?? '0', 10),
+      first_pass_rate:     total > 0 ? Math.round((approved / total) * 100) : null,
+    });
+  } catch (err) {
+    console.error('[dashboard/agent-stats] Error:', err);
+    res.status(500).json({ error: 'Failed to fetch agent stats' });
+  }
+});
+
+// GET /api/dashboard/heartbeat/:agentName — last heartbeat for status panel
+router.get('/heartbeat/:agentName', async (req: Request, res: Response) => {
+  const { agentName } = req.params;
+
+  try {
+    const [heartbeatResult, uptimeResult, shadowResult] = await Promise.all([
+      pool.query(
+        `SELECT created_at FROM agent_activity_log
+         WHERE agent_name = $1 AND action_type = 'heartbeat'
+         ORDER BY created_at DESC LIMIT 1`,
+        [agentName]
+      ),
+      pool.query(
+        `SELECT MIN(created_at) AS first_today FROM agent_activity_log
+         WHERE agent_name = $1 AND DATE(created_at) = CURRENT_DATE`,
+        [agentName]
+      ),
+      pool.query(`SELECT 1`), // placeholder — shadow mode comes from env
+    ]);
+
+    const lastHeartbeat = heartbeatResult.rows[0]?.created_at ?? null;
+    const isOnline = lastHeartbeat
+      ? (Date.now() - new Date(lastHeartbeat).getTime()) < 35 * 60 * 1000
+      : false;
+
+    const firstToday = uptimeResult.rows[0]?.first_today ?? null;
+    let uptimeStr: string | null = null;
+    if (firstToday) {
+      const mins = Math.floor((Date.now() - new Date(firstToday).getTime()) / 60000);
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      uptimeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    }
+
+    res.json({
+      status:      isOnline ? 'Online' : 'Offline',
+      shadow_mode: process.env.SHADOW_MODE === 'true',
+      uptime:      uptimeStr,
+      last_seen:   lastHeartbeat,
+    });
+  } catch (err) {
+    console.error('[dashboard/heartbeat] Error:', err);
+    res.status(500).json({ error: 'Failed to fetch heartbeat' });
+  }
+});
+
+// GET /api/dashboard/pipeline/latest — latest pipeline run step statuses
+router.get('/pipeline/latest', async (_req: Request, res: Response) => {
+  try {
+    const result = await pool.query(
+      `SELECT action_type, details, status, created_at, duration_ms
+       FROM agent_activity_log
+       WHERE action_type LIKE 'pipeline_step_%'
+       ORDER BY created_at DESC
+       LIMIT 11`
+    );
+
+    res.json({ steps: result.rows });
+  } catch (err) {
+    console.error('[dashboard/pipeline/latest] Error:', err);
+    res.status(500).json({ error: 'Failed to fetch pipeline steps' });
+  }
+});
+
+// GET /api/dashboard/activity-log/:demoId — pipeline trace for task detail page
+router.get('/activity-log/:demoId', async (req: Request, res: Response) => {
+  const { demoId } = req.params;
+
+  try {
+    const [activityResult, analysisResult] = await Promise.all([
+      pool.query(
+        `SELECT action_type, details, status, created_at, duration_ms
+         FROM agent_activity_log
+         WHERE demo_id = $1
+         ORDER BY created_at ASC`,
+        [demoId]
+      ),
+      pool.query(
+        `SELECT
+          feedback_source_id,
+          conversion_status,
+          agent_confidence,
+          accountability_classification,
+          processing_time_mins,
+          tokens_used
+         FROM demo_analysis WHERE demo_id = $1 LIMIT 1`,
+        [demoId]
+      ),
+    ]);
+
+    const analysis = analysisResult.rows[0] ?? null;
+
+    const dataSources = [
+      { name: 'Conducted Demo Sessions', ok: true },
+      { name: 'Demo Feedback Form', ok: analysis ? analysis.feedback_source_id !== null : false },
+      { name: 'Demo Conversion Sales', ok: analysis ? analysis.conversion_status !== null : false },
+    ];
+
+    res.json({
+      activity_log: activityResult.rows,
+      data_sources: dataSources,
+      confidence:   analysis?.agent_confidence ? parseFloat(analysis.agent_confidence) : null,
+      tokens_used:  analysis?.tokens_used ?? null,
+    });
+  } catch (err) {
+    console.error('[dashboard/activity-log] Error:', err);
+    res.status(500).json({ error: 'Failed to fetch activity log' });
   }
 });
 
